@@ -1,0 +1,112 @@
+openapi: 3.0.3
+info:
+  title: Card Issuing MVP API
+  version: 0.1.0
+servers:
+  - url: https://api.example.com
+paths:
+  /v1/orders:
+    post:
+      summary: 创建订单并触发发卡
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+  /v1/orders/{orderId}:
+    get:
+      summary: 查询订单结果
+      operationId: getOrder
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+  /v1/inventory/cards/import:
+    post:
+      summary: 批量入库卡密
+      operationId: importCards
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportCardsRequest'
+      responses:
+        '200':
+          description: 成功
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      required:
+        - channelId
+        - idempotencyKey
+        - externalOrderNo
+        - productCode
+        - amount
+        - currency
+      properties:
+        channelId:
+          type: string
+        idempotencyKey:
+          type: string
+        externalOrderNo:
+          type: string
+        productCode:
+          type: string
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+    OrderResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+        status:
+          type: string
+        issueStatus:
+          type: string
+        failureCode:
+          type: string
+        cardMasked:
+          type: string
+    ImportCardsRequest:
+      type: object
+      required:
+        - poolId
+        - cards
+      properties:
+        poolId:
+          type: string
+        cards:
+          type: array
+          items:
+            type: object
+            required:
+              - cardNo
+              - cardSecret
+            properties:
+              cardNo:
+                type: string
+              cardSecret:
+                type: string
