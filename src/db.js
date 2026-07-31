@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { randomUUID, createHash } = require("crypto");
+const { randomUUID, scryptSync, randomBytes, timingSafeEqual } = require("crypto");
 const sqlite3 = require("sqlite3");
 const { open } = require("sqlite");
 
@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
   name TEXT NOT NULL,
-  api_key_hash TEXT NOT NULL UNIQUE,
+  api_key_salt TEXT NOT NULL,
+  api_key_hash TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -78,8 +79,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function hashApiKey(apiKey) {
-  return createHash("sha256").update(apiKey).digest("hex");
+function createApiKeyHash(apiKey) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(apiKey, salt, 64).toString("hex");
+  return { salt, hash };
+}
+
+function verifyApiKey(apiKey, salt, hash) {
+  const candidate = scryptSync(apiKey, salt, 64).toString("hex");
+  return timingSafeEqual(Buffer.from(candidate, "hex"), Buffer.from(hash, "hex"));
 }
 
 async function initDb(dbFile) {
@@ -99,10 +107,11 @@ async function seedDefaults(db) {
   const channelId = "channel-demo";
   const apiKey = "demo-api-key";
   const poolId = "pool-demo";
+  const { salt, hash } = createApiKeyHash(apiKey);
   await db.run(
-    `INSERT OR IGNORE INTO channels (id, tenant_id, name, api_key_hash, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [channelId, "tenant-demo", "Demo Channel", hashApiKey(apiKey), now, now],
+    `INSERT OR IGNORE INTO channels (id, tenant_id, name, api_key_salt, api_key_hash, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [channelId, "tenant-demo", "Demo Channel", salt, hash, now, now],
   );
   await db.run(
     `INSERT OR IGNORE INTO card_pools (id, tenant_id, pool_name, card_type, product_code, face_value, currency, created_at, updated_at)
@@ -116,4 +125,4 @@ function newId(prefix) {
   return `${prefix}_${randomUUID().replaceAll("-", "")}`;
 }
 
-module.exports = { initDb, seedDefaults, nowIso, hashApiKey, newId };
+module.exports = { initDb, seedDefaults, nowIso, createApiKeyHash, verifyApiKey, newId };

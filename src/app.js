@@ -1,5 +1,5 @@
 const express = require("express");
-const { initDb, seedDefaults, hashApiKey, nowIso, newId } = require("./db");
+const { initDb, seedDefaults, createApiKeyHash, verifyApiKey, nowIso, newId } = require("./db");
 const { createOrder, getOrderResponse, badRequest } = require("./service");
 const { encryptSecret, verifySignature, isTimestampFresh } = require("./security");
 
@@ -15,6 +15,22 @@ function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
+function createRateLimiter({ windowMs, max }) {
+  const bucket = new Map();
+  return (req, res, next) => {
+    const key = `${req.ip}:${req.path}`;
+    const now = Date.now();
+    const snapshot = bucket.get(key);
+    if (!snapshot || now - snapshot.start >= windowMs) {
+      bucket.set(key, { start: now, count: 1 });
+      return next();
+    }
+    if (snapshot.count >= max) return res.status(429).json({ error: "too many requests" });
+    snapshot.count += 1;
+    next();
+  };
+}
+
 async function createApp({ dbFile = process.env.DB_FILE || "/home/runner/work/-/-/data/card_issuing.db" } = {}) {
   const db = await initDb(dbFile);
   const defaults = await seedDefaults(db);
@@ -23,6 +39,7 @@ async function createApp({ dbFile = process.env.DB_FILE || "/home/runner/work/-/
   app.set("db", db);
   app.set("defaults", defaults);
   app.use(parseJson());
+  app.use("/v1", createRateLimiter({ windowMs: 60_000, max: 120 }));
 
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -35,7 +52,8 @@ async function createApp({ dbFile = process.env.DB_FILE || "/home/runner/work/-/
   const requireChannel = asyncRoute(async (req, res, next) => {
     const apiKey = req.headers["x-api-key"];
     if (!apiKey || typeof apiKey !== "string") return res.status(401).json({ error: "missing api key" });
-    const channel = await db.get(`SELECT * FROM channels WHERE api_key_hash = ? AND status = 'ACTIVE'`, [hashApiKey(apiKey)]);
+    const channels = await db.all(`SELECT * FROM channels WHERE status = 'ACTIVE'`);
+    const channel = channels.find((item) => verifyApiKey(apiKey, item.api_key_salt, item.api_key_hash));
     if (!channel) return res.status(401).json({ error: "invalid api key" });
 
     const signature = req.headers["x-signature"];
@@ -67,9 +85,10 @@ async function createApp({ dbFile = process.env.DB_FILE || "/home/runner/work/-/
       if (!tenantId || !name || !apiKey) throw badRequest("tenantId, name, apiKey are required");
       const now = nowIso();
       const id = newId("chn");
+      const { salt, hash } = createApiKeyHash(apiKey);
       await db.run(
-        `INSERT INTO channels (id, tenant_id, name, api_key_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-        [id, tenantId, name, hashApiKey(apiKey), now, now],
+        `INSERT INTO channels (id, tenant_id, name, api_key_salt, api_key_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, tenantId, name, salt, hash, now, now],
       );
       res.status(201).json({ channelId: id });
     }),
