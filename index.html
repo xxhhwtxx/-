@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dino Game</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>小恐龙游戏</h1>
+      <p class="hint">按空格键或点击“跳跃”开始/跳跃，躲避仙人掌。</p>
+      <div id="game" class="game" aria-label="dino game area">
+        <div id="score" class="score">Score: 0</div>
+        <div id="dino" class="dino" aria-hidden="true"></div>
+        <div id="obstacle" class="obstacle" aria-hidden="true"></div>
+        <div class="ground" aria-hidden="true"></div>
+        <div id="game-over" class="game-over hidden">游戏结束，按空格重开</div>
+      </div>
+      <button id="jump-btn" type="button">跳跃</button>
+    </main>
+    <script src="./game.js"></script>
+  </body>
+</html>
