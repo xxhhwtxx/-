@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS channels (
   name TEXT NOT NULL,
   api_key_salt TEXT NOT NULL,
   api_key_hash TEXT NOT NULL,
+  webhook_url TEXT,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS orders (
   status TEXT NOT NULL DEFAULT 'CREATED',
   failure_code TEXT,
   failure_message TEXT,
+  paid_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE(channel_id, idempotency_key),
@@ -73,6 +75,43 @@ CREATE TABLE IF NOT EXISTS issue_records (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  webhook_url TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_retry ON webhook_deliveries(status, next_retry_at);
+
+CREATE TABLE IF NOT EXISTS risk_blacklist (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  target TEXT NOT NULL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(type, target)
+);
+
+CREATE TABLE IF NOT EXISTS risk_events (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  order_id TEXT,
+  event_type TEXT NOT NULL,
+  risk_level TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_risk_events_created ON risk_events(tenant_id, created_at);
 `;
 
 function nowIso() {
@@ -99,6 +138,8 @@ async function initDb(dbFile) {
   await db.exec("PRAGMA journal_mode = WAL;");
   await db.exec("PRAGMA foreign_keys = ON;");
   await db.exec(SCHEMA_SQL);
+  await db.exec(`ALTER TABLE channels ADD COLUMN webhook_url TEXT`).catch(() => {});
+  await db.exec(`ALTER TABLE orders ADD COLUMN paid_at TEXT`).catch(() => {});
   return db;
 }
 
@@ -109,9 +150,9 @@ async function seedDefaults(db) {
   const poolId = "pool-demo";
   const { salt, hash } = createApiKeyHash(apiKey);
   await db.run(
-    `INSERT OR IGNORE INTO channels (id, tenant_id, name, api_key_salt, api_key_hash, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [channelId, "tenant-demo", "Demo Channel", salt, hash, now, now],
+    `INSERT OR IGNORE INTO channels (id, tenant_id, name, api_key_salt, api_key_hash, webhook_url, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [channelId, "tenant-demo", "Demo Channel", salt, hash, "http://127.0.0.1:65535/webhook", now, now],
   );
   await db.run(
     `INSERT OR IGNORE INTO card_pools (id, tenant_id, pool_name, card_type, product_code, face_value, currency, created_at, updated_at)
