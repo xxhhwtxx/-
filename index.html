@@ -18,7 +18,11 @@
         min-height: 100vh;
         overflow: hidden;
         font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-        background: radial-gradient(circle at 20% 20%, #1b2a6e 0%, #090a1a 40%, #04050d 100%);
+        background:
+          radial-gradient(circle at 15% 10%, rgba(92, 117, 255, 0.25) 0%, transparent 35%),
+          radial-gradient(circle at 80% 20%, rgba(80, 210, 255, 0.16) 0%, transparent 40%),
+          radial-gradient(circle at 50% 90%, rgba(172, 108, 255, 0.14) 0%, transparent 45%),
+          linear-gradient(180deg, #060814 0%, #04050d 100%);
       }
 
       #stars {
@@ -37,35 +41,135 @@
         padding: 24px;
       }
 
+      .card {
+        padding: clamp(20px, 4vw, 36px);
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+        backdrop-filter: blur(8px);
+        box-shadow: 0 10px 45px rgba(18, 34, 83, 0.4);
+        max-width: 740px;
+      }
+
       h1 {
         margin: 0;
         font-size: clamp(2rem, 6vw, 4.2rem);
         letter-spacing: 0.08em;
-        text-shadow: 0 0 12px rgba(154, 199, 255, 0.6), 0 0 30px rgba(80, 130, 255, 0.45);
+        text-shadow: 0 0 14px rgba(165, 205, 255, 0.75), 0 0 35px rgba(80, 130, 255, 0.5);
       }
 
       p {
-        margin-top: 14px;
+        margin: 14px 0 0;
         font-size: clamp(1rem, 2.2vw, 1.3rem);
-        color: rgba(240, 245, 255, 0.9);
+        color: rgba(240, 245, 255, 0.95);
+      }
+
+      .controls {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        z-index: 2;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(7, 12, 31, 0.5);
+        backdrop-filter: blur(8px);
+      }
+
+      button,
+      label {
+        border: 0;
+        color: #eaf2ff;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 14px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      input[type="range"] {
+        width: 90px;
+      }
+
+      .hint {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+        color: rgba(235, 242, 255, 0.75);
+        font-size: 12px;
+        z-index: 2;
       }
     </style>
   </head>
   <body>
     <canvas id="stars" aria-hidden="true"></canvas>
+
     <main class="hero">
-      <div>
+      <div class="card">
         <h1>星空很美，你也很美</h1>
         <p>静下心来，抬头看见宇宙的浪漫。</p>
       </div>
     </main>
 
+    <div class="controls">
+      <button id="toggleAnimation" type="button">暂停动画</button>
+      <label>
+        星星密度
+        <input id="density" type="range" min="0.6" max="1.8" value="1" step="0.1" />
+      </label>
+      <button id="toggleMeteor" type="button">流星：开</button>
+    </div>
+    <div class="hint">空格键可暂停/继续</div>
+
     <script>
       const canvas = document.getElementById("stars");
       const ctx = canvas.getContext("2d");
+      const toggleAnimationBtn = document.getElementById("toggleAnimation");
+      const densityInput = document.getElementById("density");
+      const toggleMeteorBtn = document.getElementById("toggleMeteor");
+
+      const state = {
+        running: true,
+        densityFactor: Number(densityInput.value),
+        meteorEnabled: true,
+      };
+
       let stars = [];
+      let meteors = [];
+      let mouse = { x: 0, y: 0 };
+      let resizeTimer = null;
 
       const random = (min, max) => Math.random() * (max - min) + min;
+
+      function createStars() {
+        const count = Math.floor((canvas.width * canvas.height * state.densityFactor) / 9000);
+        stars = Array.from({ length: count }, () => ({
+          x: random(0, canvas.width),
+          y: random(0, canvas.height),
+          r: random(0.4, 2.4),
+          alpha: random(0.2, 0.95),
+          velocity: random(0.003, 0.012),
+          depth: random(0.2, 1),
+        }));
+      }
 
       function resize() {
         canvas.width = window.innerWidth;
@@ -73,38 +177,103 @@
         createStars();
       }
 
-      function createStars() {
-        const count = Math.floor((canvas.width * canvas.height) / 9000);
-        stars = Array.from({ length: count }, () => ({
-          x: random(0, canvas.width),
-          y: random(0, canvas.height),
-          r: random(0.5, 2.2),
-          alpha: random(0.25, 1),
-          velocity: random(0.002, 0.01),
-        }));
+      function spawnMeteor() {
+        if (!state.meteorEnabled || Math.random() > 0.04) return;
+        const startX = random(canvas.width * 0.1, canvas.width * 0.9);
+        const startY = random(0, canvas.height * 0.35);
+        meteors.push({
+          x: startX,
+          y: startY,
+          vx: random(7, 12),
+          vy: random(2.5, 4.5),
+          len: random(90, 150),
+          life: 1,
+          decay: random(0.014, 0.025),
+        });
+      }
+
+      function drawStars() {
+        for (const star of stars) {
+          const offsetX = (mouse.x - canvas.width / 2) * 0.0008 * star.depth;
+          const offsetY = (mouse.y - canvas.height / 2) * 0.0008 * star.depth;
+          star.alpha += star.velocity;
+          if (star.alpha > 1 || star.alpha < 0.18) star.velocity *= -1;
+
+          ctx.beginPath();
+          ctx.arc(star.x + offsetX, star.y + offsetY, star.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${star.alpha.toFixed(2)})`;
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = "rgba(170,210,255,0.85)";
+          ctx.fill();
+        }
+      }
+
+      function drawMeteors() {
+        meteors = meteors.filter((meteor) => meteor.life > 0);
+        for (const meteor of meteors) {
+          ctx.beginPath();
+          ctx.moveTo(meteor.x, meteor.y);
+          ctx.lineTo(meteor.x - meteor.len, meteor.y - meteor.len * 0.35);
+          ctx.strokeStyle = `rgba(201,229,255,${meteor.life.toFixed(2)})`;
+          ctx.lineWidth = 2;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = "rgba(190,230,255,0.95)";
+          ctx.stroke();
+
+          meteor.x += meteor.vx;
+          meteor.y += meteor.vy;
+          meteor.life -= meteor.decay;
+        }
       }
 
       function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        for (const star of stars) {
-          star.alpha += star.velocity;
-          if (star.alpha > 1 || star.alpha < 0.2) {
-            star.velocity *= -1;
-          }
-
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha.toFixed(2)})`;
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = "rgba(180, 210, 255, 0.8)";
-          ctx.fill();
+        if (!state.running) {
+          requestAnimationFrame(draw);
+          return;
         }
 
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawStars();
+        spawnMeteor();
+        drawMeteors();
         requestAnimationFrame(draw);
       }
 
-      window.addEventListener("resize", resize);
+      function toggleAnimation() {
+        state.running = !state.running;
+        toggleAnimationBtn.textContent = state.running ? "暂停动画" : "继续动画";
+      }
+
+      function toggleMeteor() {
+        state.meteorEnabled = !state.meteorEnabled;
+        toggleMeteorBtn.textContent = `流星：${state.meteorEnabled ? "开" : "关"}`;
+        if (!state.meteorEnabled) meteors = [];
+      }
+
+      toggleAnimationBtn.addEventListener("click", toggleAnimation);
+      toggleMeteorBtn.addEventListener("click", toggleMeteor);
+      densityInput.addEventListener("input", () => {
+        state.densityFactor = Number(densityInput.value);
+        createStars();
+      });
+
+      window.addEventListener("mousemove", (event) => {
+        mouse.x = event.clientX;
+        mouse.y = event.clientY;
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.code === "Space") {
+          event.preventDefault();
+          toggleAnimation();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(resize, 120);
+      });
+
       resize();
       draw();
     </script>
