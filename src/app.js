@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const { initDb, seedDefaults, createApiKeyHash, verifyApiKey, nowIso, newId } = require("./db");
 const { createOrder, getOrderResponse, badRequest } = require("./service");
 const { encryptSecret, verifySignature, isTimestampFresh } = require("./security");
@@ -15,22 +16,6 @@ function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
-function createRateLimiter({ windowMs, max }) {
-  const bucket = new Map();
-  return (req, res, next) => {
-    const key = `${req.ip}:${req.path}`;
-    const now = Date.now();
-    const snapshot = bucket.get(key);
-    if (!snapshot || now - snapshot.start >= windowMs) {
-      bucket.set(key, { start: now, count: 1 });
-      return next();
-    }
-    if (snapshot.count >= max) return res.status(429).json({ error: "too many requests" });
-    snapshot.count += 1;
-    next();
-  };
-}
-
 async function createApp({ dbFile = process.env.DB_FILE || "/home/runner/work/-/-/data/card_issuing.db" } = {}) {
   const db = await initDb(dbFile);
   const defaults = await seedDefaults(db);
@@ -39,7 +24,16 @@ async function createApp({ dbFile = process.env.DB_FILE || "/home/runner/work/-/
   app.set("db", db);
   app.set("defaults", defaults);
   app.use(parseJson());
-  app.use("/v1", createRateLimiter({ windowMs: 60_000, max: 120 }));
+  app.use(
+    "/v1",
+    rateLimit({
+      windowMs: 60_000,
+      limit: 120,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      message: { error: "too many requests" },
+    }),
+  );
 
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
