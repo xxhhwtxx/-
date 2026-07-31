@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>星空之美</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: radial-gradient(circle at 20% 20%, #1b2a6e 0%, #090a1a 40%, #04050d 100%);
+      }
+
+      #stars {
+        position: fixed;
+        inset: 0;
+      }
+
+      .hero {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        text-align: center;
+        color: #f7f8ff;
+        padding: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 6vw, 4.2rem);
+        letter-spacing: 0.08em;
+        text-shadow: 0 0 12px rgba(154, 199, 255, 0.6), 0 0 30px rgba(80, 130, 255, 0.45);
+      }
+
+      p {
+        margin-top: 14px;
+        font-size: clamp(1rem, 2.2vw, 1.3rem);
+        color: rgba(240, 245, 255, 0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stars" aria-hidden="true"></canvas>
+    <main class="hero">
+      <div>
+        <h1>星空很美，你也很美</h1>
+        <p>静下心来，抬头看见宇宙的浪漫。</p>
+      </div>
+    </main>
+
+    <script>
+      const canvas = document.getElementById("stars");
+      const ctx = canvas.getContext("2d");
+      let stars = [];
+
+      const random = (min, max) => Math.random() * (max - min) + min;
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        createStars();
+      }
+
+      function createStars() {
+        const count = Math.floor((canvas.width * canvas.height) / 9000);
+        stars = Array.from({ length: count }, () => ({
+          x: random(0, canvas.width),
+          y: random(0, canvas.height),
+          r: random(0.5, 2.2),
+          alpha: random(0.25, 1),
+          velocity: random(0.002, 0.01),
+        }));
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (const star of stars) {
+          star.alpha += star.velocity;
+          if (star.alpha > 1 || star.alpha < 0.2) {
+            star.velocity *= -1;
+          }
+
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha.toFixed(2)})`;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = "rgba(180, 210, 255, 0.8)";
+          ctx.fill();
+        }
+
+        requestAnimationFrame(draw);
+      }
+
+      window.addEventListener("resize", resize);
+      resize();
+      draw();
+    </script>
+  </body>
+</html>
