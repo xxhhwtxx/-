@@ -1,0 +1,119 @@
+const path = require("path");
+const fs = require("fs");
+const { randomUUID, createHash } = require("crypto");
+const sqlite3 = require("sqlite3");
+const { open } = require("sqlite");
+
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS channels (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  api_key_hash TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS card_pools (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  pool_name TEXT NOT NULL,
+  card_type TEXT NOT NULL,
+  product_code TEXT NOT NULL,
+  face_value REAL NOT NULL,
+  currency TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cards (
+  id TEXT PRIMARY KEY,
+  pool_id TEXT NOT NULL,
+  card_no TEXT NOT NULL UNIQUE,
+  card_secret_ciphertext TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'AVAILABLE',
+  lock_token TEXT,
+  lock_expired_at TEXT,
+  issued_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cards_pool_status ON cards(pool_id, status);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  external_order_no TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  product_code TEXT NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  amount REAL NOT NULL,
+  currency TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'CREATED',
+  failure_code TEXT,
+  failure_message TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(channel_id, idempotency_key),
+  UNIQUE(channel_id, external_order_no)
+);
+CREATE INDEX IF NOT EXISTS idx_orders_channel_status ON orders(channel_id, status);
+
+CREATE TABLE IF NOT EXISTS issue_records (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL UNIQUE,
+  card_id TEXT,
+  issue_status TEXT NOT NULL,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  response_payload TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function hashApiKey(apiKey) {
+  return createHash("sha256").update(apiKey).digest("hex");
+}
+
+async function initDb(dbFile) {
+  if (dbFile !== ":memory:") {
+    const dir = path.dirname(dbFile);
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const db = await open({ filename: dbFile, driver: sqlite3.Database });
+  await db.exec("PRAGMA journal_mode = WAL;");
+  await db.exec("PRAGMA foreign_keys = ON;");
+  await db.exec(SCHEMA_SQL);
+  return db;
+}
+
+async function seedDefaults(db) {
+  const now = nowIso();
+  const channelId = "channel-demo";
+  const apiKey = "demo-api-key";
+  const poolId = "pool-demo";
+  await db.run(
+    `INSERT OR IGNORE INTO channels (id, tenant_id, name, api_key_hash, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [channelId, "tenant-demo", "Demo Channel", hashApiKey(apiKey), now, now],
+  );
+  await db.run(
+    `INSERT OR IGNORE INTO card_pools (id, tenant_id, pool_name, card_type, product_code, face_value, currency, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [poolId, "tenant-demo", "Demo Pool", "VIRTUAL", "DEMO100", 100, "CNY", now, now],
+  );
+  return { channelId, apiKey, poolId };
+}
+
+function newId(prefix) {
+  return `${prefix}_${randomUUID().replaceAll("-", "")}`;
+}
+
+module.exports = { initDb, seedDefaults, nowIso, hashApiKey, newId };

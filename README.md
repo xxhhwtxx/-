@@ -85,3 +85,30 @@
 └── sql/
     └── schema.sql
 ```
+
+## 9. MVP 服务（已实现）
+
+当前仓库已提供一个可运行的 MVP 发卡服务（Node.js + SQLite）：
+
+- 管理端：
+  - `POST /v1/admin/channels` 创建渠道
+  - `POST /v1/admin/card-pools` 创建卡池
+  - `POST /v1/inventory/cards/import` 批量导入卡密
+- 渠道端：
+  - `POST /v1/orders` 创建订单并自动发卡（幂等）
+  - `GET /v1/orders/{orderId}` 查询订单与发卡结果
+
+默认内置演示数据：
+
+- 渠道 API Key：`demo-api-key`
+- 卡池：`pool-demo`
+- 产品编码：`DEMO100`
+
+### 本地运行
+
+```bash
+cd /home/runner/work/-/-
+npm install
+npm test
+npm start
+```
